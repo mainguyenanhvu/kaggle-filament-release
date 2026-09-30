@@ -1,0 +1,19 @@
+# Competition data, annotations, weights and outputs never enter this repository.
+data/
+weights/
+outputs/
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.json
+!filseg/**/*.json
+*.jsonl
+*.csv
+*.jpeg
+*.jpg
+*.png
+*.npz
+*.npy
+__pycache__/
+.ipynb_checkpoints/
