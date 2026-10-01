@@ -4,14 +4,18 @@ Instance segmentation of solar filaments in full-disk H-alpha images: a Mask R-C
 filaments, and a seed-box crop U-Net refines each proposal's mask. This repository holds the code only;
 it contains no competition images, annotations or trained weights.
 
-Status: work in progress. `filseg.metrics` and `scripts/rubric_metrics.py` are complete; the training
-and inference pipeline and the end-to-end notebook are being ported here.
+Status: work in progress. Inference (`filseg/infer.py`, `scripts/predict.py`, `notebooks/pipeline.ipynb`)
+and the rubric scorer are complete; the training scripts are being ported here.
 
 ## Layout
 
 | path | content |
 |---|---|
 | `filseg/metrics.py` | Panoptic Quality over every annotator record, IoU/Dice distributions, one-to-many and many-to-one counts |
+| `filseg/model.py` | Mask R-CNN ResNet-50-FPN v2 detector and the seed-box crop U-Net refiner (ResNet-18 encoder) |
+| `filseg/infer.py` | translate TTA, mask NMS, score threshold and pixel ownership, crop refinement, submission rows |
+| `scripts/predict.py` | images -> submission CSV or JSON lines, with per-image wall time |
+| `notebooks/pipeline.ipynb` | the whole pipeline: test images -> CSV, then the rubric metrics on the validation split |
 | `filseg/io.py` | readers for the organiser COCO annotations, the submission CSV and JSON-lines predictions; the 60-image validation split |
 | `scripts/rubric_metrics.py` | command-line scorer that prints every rubric quantity and draws the three distribution figures |
 | `tests/` | synthetic unit tests (no data needed): `python -m unittest discover tests` |
@@ -21,6 +25,18 @@ and inference pipeline and the end-to-end notebook are being ported here.
 Download the challenge data from Kaggle (`kaggle competitions download -c filament-segmentation-2026`)
 and unpack it under `data/`, which git ignores. Training uses only the challenge training images and
 annotations (optionally with unlabelled GONG frames); inference uses only the H-alpha test images.
+
+## Inference
+
+The two checkpoints (`weights/detector.pt`, `weights/refiner.pt`) are distributed separately from the
+code. Then
+
+```
+python scripts/predict.py --images data/MAGFiLO_1.0_Kaggle_2026/test/test_images \
+    --detector weights/detector.pt --refiner weights/refiner.pt --out outputs/submission.csv
+```
+
+`--no-tta` drops the translate TTA. The pipeline also runs on CPU (`--device cpu`).
 
 ## Scoring
 
