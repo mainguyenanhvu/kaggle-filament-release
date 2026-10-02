@@ -1,11 +1,13 @@
 """Score predictions with every quantity of the committee rubric.
 
 Prints (and optionally writes) PQ, SQ, RQ, TP/FP/FN over all annotator records, the IoU and Dice
-distributions of overlapping pairs, and the one-to-many / many-to-one degree histograms; with
---plots it also draws the three figures of the organisers' self-evaluation notebook.
+distributions of overlapping and of matched pairs, the one-to-many / many-to-one degree
+histograms (at IoU > 0 and at IoU > 0.5), PQ by the number of annotator records per image and,
+with --bootstrap, 95% intervals over images; with --plots it also draws the three figures of the
+organisers' self-evaluation notebook.
 
   python scripts/rubric_metrics.py --ann <train annotations.json> --pred <submission.csv|preds.jsonl> \
-      [--heldout] [--out metrics.json] [--plots figures/]
+      [--heldout] [--bootstrap 5000] [--out metrics.json] [--plots figures/]
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from filseg.io import heldout_stems, load_predictions, load_records  # noqa: E402
-from filseg.metrics import Evaluation, evaluate  # noqa: E402
+from filseg.metrics import Evaluation, bootstrap, evaluate  # noqa: E402
 
 
 def plot(ev: Evaluation, out_dir: Path) -> None:
@@ -88,15 +90,38 @@ def main() -> int:
         action="store_true",
         help="score only the 60-image validation split",
     )
+    ap.add_argument(
+        "--bootstrap",
+        type=int,
+        default=0,
+        metavar="N",
+        help="N image-level bootstrap resamples for 95%% intervals (0 = off)",
+    )
     ap.add_argument("--out", type=Path, help="write the summary as JSON")
     ap.add_argument("--plots", type=Path, help="directory for the distribution figures")
     a = ap.parse_args()
 
     stems = heldout_stems(a.ann) if a.heldout else None
     records = load_records(a.ann, stems)
-    ev = evaluate(records, load_predictions(a.pred))
+    preds = load_predictions(a.pred)
+    ev = evaluate(records, preds)
     summary = ev.summary()
     summary["n_images"] = len(records)
+    by_n: dict[str, dict] = {}
+    for k in sorted({len(r) for r in records.values()}):
+        sub = evaluate({s: r for s, r in records.items() if len(r) == k}, preds)
+        by_n[str(k)] = {
+            "n_images": sum(len(r) == k for r in records.values()),
+            "pq": round(sub.pq, 5),
+            "sq": round(sub.sq, 4),
+            "rq": round(sub.rq, 4),
+            "tp": sub.tp,
+            "fp": sub.fp,
+            "fn": sub.fn,
+        }
+    summary["by_records_per_image"] = by_n
+    if a.bootstrap:
+        summary["bootstrap_95"] = bootstrap(records, preds, n_boot=a.bootstrap)
     print(json.dumps(summary, indent=1))
     if a.out:
         a.out.write_text(json.dumps(summary, indent=1) + "\n")

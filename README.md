@@ -43,12 +43,16 @@ python scripts/predict.py --images data/MAGFiLO_1.0_Kaggle_2026/test/test_images
 ```
 pip install -r requirements.txt
 python scripts/rubric_metrics.py --ann data/MAGFiLO_1.0_Kaggle_2026/train/MAGFiLO_1.0_Annotations_kaggle2026_train.json \
-    --pred predictions.jsonl --heldout --out metrics.json --plots figures/
+    --pred predictions.jsonl --heldout --bootstrap 5000 --out metrics.json --plots figures/
 ```
 
 The scorer follows the organisers' self-evaluation notebook: each (annotator, image) record is scored
 against the image's predictions, a pair is a true positive when IoU > 0.5, and counts are pooled over all
 records, so a prediction is a false positive once per annotator who did not draw it.
+
+Beyond PQ, SQ, RQ and TP/FP/FN it reports the IoU and Dice quantiles of overlapping and of matched pairs,
+the one-to-many and many-to-one counts at IoU > 0 and at the match threshold IoU > 0.5, PQ by the number of
+annotator records per image, and (`--bootstrap N`) 95% intervals from resampling images with all their records.
 
 ## Licence
 
