@@ -8,3 +8,6 @@ pillow==12.3.0           # MIT-CMU (HPND)
 pandas==3.0.5            # BSD-3-Clause
 matplotlib==3.11.2       # PSF-based, BSD-compatible
 tqdm==4.70.0             # MPL-2.0 / MIT
+# Only to execute notebooks/pipeline.ipynb headless (e.g. `jupyter execute`); the scripts do not need them.
+ipykernel==7.4.0         # BSD-3-Clause
+nbclient==0.11.0         # BSD-3-Clause
