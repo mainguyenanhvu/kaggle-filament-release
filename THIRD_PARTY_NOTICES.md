@@ -23,6 +23,8 @@ derived from the dataset used for training. It is your responsibility to determi
 permission to use the models for your use case."
 (<https://pytorch.org/vision/0.28/models.html>; also `README.md` of torchvision v0.28.0.)
 
+| `convnext_tiny.dinov3_lvd1689m` (timm, Hugging Face hub `timm/convnext_tiny.dinov3_lvd1689m`) | downloaded by `timm` at training time only | Meta's DINOv3 self-supervised pretraining (LVD-1689M) | initialises the ConvNeXt-tiny backbone of the cascade detector (`scripts/train_detector.py --cascade`); inference builds it with `pretrained=False`. Distributed by Meta under the "DINOv3 License" (see the model card); not redistributed here; a checkpoint fine-tuned from it is subject to that licence, so check it before redistributing `cascade_detector.pt` |
+
 The training datasets carry their own terms:
 
 - **COCO.** "The annotations in this dataset along with this website belong to the COCO Consortium
@@ -38,12 +40,21 @@ commercial use of those checkpoints should assess the dataset terms above; retra
 initialisation (`pretrained=False`) removes the dependency on the pretrained weights but not on the
 competition data.
 
+## Code ported into the cascade detector
+
+`CascadeRoIHeads` in `filseg/model.py` subclasses and reuses torchvision's `RoIHeads`,
+`fastrcnn_loss`, `maskrcnn_loss`, `maskrcnn_inference`, `BoxCoder`, `Matcher` and `FeaturePyramidNetwork`
+(BSD-3-Clause, Copyright (c) Soumith Chintala 2016); no torchvision source is copied. The method is the
+Cascade R-CNN of Cai and Vasconcelos (CVPR 2018, <https://arxiv.org/abs/1712.00726>); the mean-of-stages
+score at inference follows the mmdetection convention (Apache-2.0), reimplemented here, not copied.
+
 ## Python packages (`requirements.txt`)
 
 | package | version | licence | how it is used |
 |---|---|---|---|
 | torch | 2.13.0 | BSD-3-Clause (PyTorch `LICENSE`); bundled components under Apache-2.0, MIT, BSD and BSL-1.0 | tensors, training, inference |
 | torchvision | 0.28.0 | BSD-3-Clause | Mask R-CNN and ResNet-18 definitions, RoI ops, pretrained-weight loader |
+| timm | 1.0.30 | Apache-2.0 (package metadata) | ConvNeXt-tiny feature backbone of the cascade detector (`filseg/model.py`, `TimmFPN`) |
 | numpy | 2.5.2 | BSD-3-Clause (bundled components: 0BSD, MIT, Zlib, CC0-1.0) | array processing |
 | pycocotools | 2.0.11 | BSD-2-Clause (package metadata: FreeBSD) | RLE mask encoding and COCO annotation handling |
 | opencv-python-headless | 5.0.0.93 | OpenCV: Apache-2.0; wheel packaging: MIT; bundled FFmpeg binaries: LGPL-2.1 | image I/O, CLAHE, morphology |

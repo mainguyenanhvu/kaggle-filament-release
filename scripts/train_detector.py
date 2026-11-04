@@ -36,7 +36,7 @@ from filseg.data import (  # noqa: E402
     load_coco,
     split_stems,
 )
-from filseg.model import build_detector  # noqa: E402
+from filseg.model import CONVNEXT, build_detector  # noqa: E402
 
 MILESTONE_FRACTIONS = (0.7, 0.9)
 
@@ -62,6 +62,20 @@ def parse_args() -> argparse.Namespace:
     )
     ap.add_argument("--split-seed", type=int, default=0)
     ap.add_argument("--keep-checkpoints", type=int, default=2)
+    ap.add_argument(
+        "--cascade",
+        action="store_true",
+        help="the cascade detector of the record vote: ConvNeXt-tiny (DINOv3) backbone, three box "
+        "stages, AdamW lr 1e-4 / weight decay 0.05 (--lr, --weight-decay and --momentum are SGD "
+        "options and are ignored). Record recipe: --epochs 3 --micro-batch 1 --device cpu, "
+        "warm-started from a detector this script does not reproduce (see README)",
+    )
+    ap.add_argument(
+        "--micro-batch",
+        type=int,
+        default=0,
+        help="split each batch into gradient-accumulated chunks of this many images (0 = none)",
+    )
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return ap.parse_args()
 
@@ -94,13 +108,19 @@ def main() -> None:
         drop_last=True,
     )
 
-    model = build_detector(args.img_size, pretrained=True).to(device)
-    optimizer = torch.optim.SGD(
-        [p for p in model.parameters() if p.requires_grad],
-        lr=args.lr,
-        momentum=args.momentum,
-        weight_decay=args.weight_decay,
-    )
+    if args.cascade:
+        model = build_detector(
+            args.img_size, pretrained=True, backbone=CONVNEXT, cascade=True
+        ).to(device)
+    else:
+        model = build_detector(args.img_size, pretrained=True).to(device)
+    params = [p for p in model.parameters() if p.requires_grad]
+    if args.cascade:
+        optimizer = torch.optim.AdamW(params, lr=1e-4, weight_decay=0.05)
+    else:
+        optimizer = torch.optim.SGD(
+            params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay
+        )
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
         milestones=[int(args.epochs * f) for f in MILESTONE_FRACTIONS],
@@ -129,12 +149,16 @@ def main() -> None:
                 for t in targets
             ]
             optimizer.zero_grad()
-            with torch.amp.autocast(device.type, enabled=device.type == "cuda"):
-                loss = sum(model(images, targets).values())
-            scaler.scale(loss).backward()
+            chunk = args.micro_batch or len(images)
+            batch_loss = 0.0
+            for i in range(0, len(images), chunk):
+                with torch.amp.autocast(device.type, enabled=device.type == "cuda"):
+                    loss = sum(model(images[i : i + chunk], targets[i : i + chunk]).values())
+                scaler.scale(loss * (len(images[i : i + chunk]) / len(images))).backward()
+                batch_loss += loss.item() * len(images[i : i + chunk]) / len(images)
             scaler.step(optimizer)
             scaler.update()
-            total += loss.item()
+            total += batch_loss
             batches += 1
         scheduler.step()
         print(
