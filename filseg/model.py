@@ -222,19 +222,58 @@ class CascadeRoIHeads(RoIHeads):
         return result, {}
 
 
+class AnnotatorFiLM(nn.Module):
+    """Scale and shift a RoI head's output by a learned per-annotator vector (FiLM).
+
+    The last row of the two embeddings is the "null" annotator, trained by per-batch id dropout.
+    `annotator` is set for the whole forward pass with `set_annotator`; a negative value selects
+    the null row. The vectors start at zero, so an untrained FiLM leaves the head unchanged.
+    """
+
+    def __init__(self, head: nn.Module, n_ids: int, channels: int):
+        super().__init__()
+        self.head = head
+        self.n_ids = n_ids
+        self.gamma = nn.Embedding(n_ids + 1, channels)
+        self.beta = nn.Embedding(n_ids + 1, channels)
+        nn.init.zeros_(self.gamma.weight)
+        nn.init.zeros_(self.beta.weight)
+        self.annotator = -1
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.head(x)
+        row = self.annotator if self.annotator >= 0 else self.n_ids
+        index = torch.full((1,), row, dtype=torch.long, device=y.device)
+        gamma, beta = self.gamma(index), self.beta(index)
+        if y.dim() == 4:
+            gamma, beta = gamma[:, :, None, None], beta[:, :, None, None]
+        return y * (1 + gamma) + beta
+
+
+def set_annotator(model: nn.Module, annotator: int) -> None:
+    """Select the annotator row of every FiLM in `model`; negative selects the null row."""
+    for module in model.modules():
+        if isinstance(module, AnnotatorFiLM):
+            module.annotator = annotator
+
+
 def build_detector(
     img_size: int = 1024,
     anchor_ratios: tuple[float, ...] = (0.5, 1.0, 2.0),
     pretrained: bool = True,
     backbone: str = "resnet50",
     cascade: bool = False,
+    film_ids: int = 0,
 ) -> nn.Module:
     """Mask R-CNN ResNet-50-FPN v2 with two classes (background, filament), small anchors and a
     28x28 mask RoI pool. Images are resized to `img_size` on both sides.
 
     `backbone` other than "resnet50" is a timm model name under a fresh FPN (TimmFPN); `cascade`
     swaps the box stage for CascadeRoIHeads. The record cascade detector is
-    backbone=CONVNEXT, cascade=True."""
+    backbone=CONVNEXT, cascade=True. `film_ids` > 0 wraps the box and mask RoI heads in
+    AnnotatorFiLM over that many annotators."""
+    if cascade and film_ids:
+        raise ValueError("the cascade box stages take no annotator FiLM")
     model = maskrcnn_resnet50_fpn_v2(
         weights=MaskRCNN_ResNet50_FPN_V2_Weights.DEFAULT if pretrained else None,
         weights_backbone=None,
@@ -264,6 +303,9 @@ def build_detector(
     model.roi_heads.mask_predictor = MaskRCNNPredictor(mask_in, 256, 2)
     if cascade:
         model.roi_heads = CascadeRoIHeads(model.roi_heads)
+    if film_ids:
+        model.roi_heads.box_head = AnnotatorFiLM(model.roi_heads.box_head, film_ids, box_in)
+        model.roi_heads.mask_head = AnnotatorFiLM(model.roi_heads.mask_head, film_ids, mask_in)
     return model
 
 
@@ -317,11 +359,19 @@ def load_detector(
     anchor_ratios=(0.5, 1.0, 2.0),
     backbone: str = "resnet50",
     cascade: bool = False,
+    film_ids: int = 0,
+    annotator: int = -1,
 ) -> nn.Module:
     model = build_detector(
-        img_size, anchor_ratios, pretrained=False, backbone=backbone, cascade=cascade
+        img_size,
+        anchor_ratios,
+        pretrained=False,
+        backbone=backbone,
+        cascade=cascade,
+        film_ids=film_ids,
     )
     model.load_state_dict(torch.load(path, map_location=device)["model"])
+    set_annotator(model, annotator)
     return model.to(device).eval()
 
 

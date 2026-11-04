@@ -11,6 +11,11 @@ resized to 1024 px on both sides, SGD (lr 0.005, momentum 0.9, weight decay 1e-4
 precision, 18 epochs, lr x0.1 after epochs 12 and 16, batch 4. Augmentation: random 90-degree
 rotation, horizontal flip and on-disk photometric jitter. One record per frame, the most complete one.
 
+`--records` picks the other training sets of the vote's members (`--records random` is the all-records
+member; `--records film` trains every record with a per-annotator FiLM on the RoI heads, the vote's
+base, whose batches hold one annotator each and fall back to the null annotator 20% of the time).
+`--backbone` trains a timm backbone under a fresh FPN with AdamW lr 1e-4 and weight decay 0.05.
+
 The run writes `epoch_NN.pt` (model, optimizer, scheduler, epoch) and keeps the last two; the
 submitted detector is the last epoch, `epoch_17.pt`. Re-running resumes from the latest checkpoint.
 Training is deterministic only in its data split: the augmentation and cuDNN kernels are not seeded
@@ -21,6 +26,7 @@ to one draw, and repeated runs of this recipe have a held-out PQ standard deviat
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 import time
 from pathlib import Path
@@ -30,15 +36,20 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from filseg.data import (  # noqa: E402
+    AllRecordsDataset,
     DetectorDataset,
+    RandomRecordDataset,
+    SameAnnotatorBatches,
+    annotator_index,
     collate,
     dedup_most_complete,
     load_coco,
     split_stems,
 )
-from filseg.model import CONVNEXT, build_detector  # noqa: E402
+from filseg.model import CONVNEXT, build_detector, set_annotator  # noqa: E402
 
 MILESTONE_FRACTIONS = (0.7, 0.9)
+NULL_ANNOTATOR_P = 0.2  # share of batches trained under the null annotator
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,6 +82,19 @@ def parse_args() -> argparse.Namespace:
         "warm-started from a detector this script does not reproduce (see README)",
     )
     ap.add_argument(
+        "--records",
+        choices=("most-complete", "random", "film"),
+        default="most-complete",
+        help="training records per frame: the most complete one, a random one per access, or every "
+        "one under a per-annotator FiLM",
+    )
+    ap.add_argument(
+        "--backbone",
+        default="resnet50",
+        help="timm model name under a fresh FPN, trained with AdamW lr 1e-4 / weight decay 0.05 "
+        "(the vote's ConvNeXt-small member: convnext_small.in12k_ft_in1k)",
+    )
+    ap.add_argument(
         "--micro-batch",
         type=int,
         default=0,
@@ -93,29 +117,44 @@ def main() -> None:
     coco = load_coco(args.ann)
     train_stems, val_stems = split_stems(coco, args.n_val, args.split_seed)
     chosen = dedup_most_complete(coco)
-    dataset = DetectorDataset(coco, train_stems, chosen, args.images, train_aug=True)
+    if args.records == "film":
+        dataset = AllRecordsDataset(coco, train_stems, args.images, train_aug=True)
+    elif args.records == "random":
+        dataset = RandomRecordDataset(coco, train_stems, args.images, train_aug=True)
+    else:
+        dataset = DetectorDataset(coco, train_stems, chosen, args.images, train_aug=True)
     print(
         f"{len(train_stems)} train frames ({len(dataset)} with instances), "
         f"{len(val_stems)} held out, device {device}",
         flush=True,
     )
-    loader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.workers,
-        collate_fn=collate,
-        drop_last=True,
-    )
+    sampler = None
+    if args.records == "film":
+        sampler = SameAnnotatorBatches(dataset.annotators, args.batch_size)
+        loader = DataLoader(
+            dataset, batch_sampler=sampler, num_workers=args.workers, collate_fn=collate
+        )
+    else:
+        loader = DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.workers,
+            collate_fn=collate,
+            drop_last=True,
+        )
 
+    film_ids = len(annotator_index(coco)) if args.records == "film" else 0
     if args.cascade:
         model = build_detector(
             args.img_size, pretrained=True, backbone=CONVNEXT, cascade=True
         ).to(device)
     else:
-        model = build_detector(args.img_size, pretrained=True).to(device)
+        model = build_detector(
+            args.img_size, pretrained=True, backbone=args.backbone, film_ids=film_ids
+        ).to(device)
     params = [p for p in model.parameters() if p.requires_grad]
-    if args.cascade:
+    if args.cascade or args.backbone != "resnet50":
         optimizer = torch.optim.AdamW(params, lr=1e-4, weight_decay=0.05)
     else:
         optimizer = torch.optim.SGD(
@@ -139,10 +178,16 @@ def main() -> None:
         print(f"resumed {resume}, next epoch {start_epoch}", flush=True)
 
     started = time.time()
+    null_rng = random.Random(1)
     for epoch in range(start_epoch, args.epochs):
         model.train()
+        if sampler is not None:
+            sampler.set_epoch(epoch)
         total, batches = 0.0, 0
         for images, targets in loader:
+            if film_ids:
+                annotator = targets[0]["annotator"]
+                set_annotator(model, -1 if null_rng.random() < NULL_ANNOTATOR_P else annotator)
             images = [image.to(device) for image in images]
             targets = [
                 {k: v.to(device) if torch.is_tensor(v) else v for k, v in t.items()}

@@ -25,7 +25,7 @@ import numpy as np
 import torch
 from PIL import Image
 from pycocotools import mask as mask_util
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 from torchvision.transforms.functional import to_tensor
 
 from filseg.infer import CLAHE, bbox_from_mask, square_crop
@@ -183,7 +183,9 @@ class DetectorDataset(Dataset):
         return len(self.items)
 
     def __getitem__(self, index: int):
-        stem, meta, anns = self.items[index]
+        return self._load(index, *self.items[index])
+
+    def _load(self, index: int, stem: str, meta: dict, anns: list[dict]):
         img = np.array(Image.open(self.image_dir / meta["file_name"]).convert("RGB"))
         masks = instance_masks(anns, meta["height"], meta["width"])
         if self.train_aug:
@@ -204,6 +206,93 @@ class DetectorDataset(Dataset):
             "stem": stem,
         }
         return to_tensor(img), target
+
+
+def annotator_of(image_id: str) -> str:
+    """The annotator part of a record id `<annotator>-<stem>`."""
+    return image_id.split("-")[0]
+
+
+def annotator_index(coco: dict) -> dict[str, int]:
+    """Annotator id -> row of the FiLM embeddings, over every record in the annotation file."""
+    return {a: i for i, a in enumerate(sorted({annotator_of(im["id"]) for im in coco["images"]}))}
+
+
+class AllRecordsDataset(DetectorDataset):
+    """One item per (training frame, non-empty annotator record); the target carries `annotator`.
+    The annotator-conditioned detector trains on this, so each record is self-consistent given its
+    id instead of one frame carrying contradictory labels."""
+
+    def __init__(self, coco: dict, stems: list[str], image_dir: str | Path, train_aug: bool = False):
+        self.image_dir = Path(image_dir)
+        self.train_aug = train_aug
+        anns_by_id = group_annotations(coco)
+        index = annotator_index(coco)
+        keep = set(stems)
+        self.items, self.annotators = [], []
+        for meta in sorted(coco["images"], key=lambda r: r["id"]):
+            stem = Path(meta["file_name"]).stem
+            anns = anns_by_id.get(meta["id"], [])
+            if stem in keep and anns:
+                self.items.append((stem, meta, anns))
+                self.annotators.append(index[annotator_of(meta["id"])])
+
+    def __getitem__(self, index: int):
+        image, target = super().__getitem__(index)
+        target["annotator"] = self.annotators[index]
+        return image, target
+
+
+class RandomRecordDataset(DetectorDataset):
+    """One item per training frame; each access draws one of its non-empty records uniformly, so the
+    target over the epochs is the expected annotator. Gradient steps per epoch match the one-record
+    recipe."""
+
+    def __init__(self, coco: dict, stems: list[str], image_dir: str | Path, train_aug: bool = False):
+        self.image_dir = Path(image_dir)
+        self.train_aug = train_aug
+        anns_by_id = group_annotations(coco)
+        records: dict[str, list] = {}
+        for meta in coco["images"]:
+            anns = anns_by_id.get(meta["id"], [])
+            if anns:
+                records.setdefault(Path(meta["file_name"]).stem, []).append((meta, anns))
+        self.records = [(s, records[s]) for s in stems if s in records]
+
+    def __len__(self) -> int:
+        return len(self.records)
+
+    def __getitem__(self, index: int):
+        stem, recs = self.records[index]
+        return self._load(index, stem, *random.choice(recs))
+
+
+class SameAnnotatorBatches(Sampler):
+    """Batches of one annotator each (FiLM reads one id per forward pass), reshuffled per epoch."""
+
+    def __init__(self, annotators: list[int], batch_size: int, seed: int = 0):
+        self.annotators, self.batch_size, self.seed, self.epoch = annotators, batch_size, seed, 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+    def _batches(self) -> list[list[int]]:
+        rng = random.Random(self.seed + self.epoch)
+        groups: dict[int, list[int]] = {}
+        for i, a in enumerate(self.annotators):
+            groups.setdefault(a, []).append(i)
+        batches = []
+        for members in groups.values():
+            rng.shuffle(members)
+            batches += [members[k : k + self.batch_size] for k in range(0, len(members), self.batch_size)]
+        rng.shuffle(batches)
+        return batches
+
+    def __iter__(self):
+        return iter(self._batches())
+
+    def __len__(self) -> int:
+        return len(self._batches())
 
 
 def collate(batch):
