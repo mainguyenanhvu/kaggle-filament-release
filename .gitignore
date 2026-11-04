@@ -17,3 +17,5 @@ outputs/
 *.npy
 __pycache__/
 .ipynb_checkpoints/
+__pycache__/
+.cx/
