@@ -1,0 +1,23 @@
+{
+ "detector.pt": {
+  "source_checkpoint": "epoch_17.pt",
+  "epoch": 17,
+  "keys_dropped": [
+   "optimizer",
+   "scheduler"
+  ],
+  "bytes": 183913877,
+  "sha256": "56d9005dfcaad8c3c00986fb0ce80a2fae561bd817e067a87a59ab7b36264c4d",
+  "source_sha256": "fb08bfe641bba2076fc79dbd030b9aa096f6f5e10062135b891992db0f51bccb",
+  "parameters": 45941792
+ },
+ "refiner.pt": {
+  "source_checkpoint": "best_refiner_seedbox.pt",
+  "epoch": 8,
+  "keys_dropped": [],
+  "bytes": 57048983,
+  "sha256": "4dccebbd7de0f41e5e3cb3d00dd4c7fd0960c326c14a0f44fa43adf349d98e8f",
+  "source_sha256": "cd467a5a5a1e7c91382fee82196258d11b5dbc345435c31da20afb00c9a177bd",
+  "parameters": 14248157
+ }
+}

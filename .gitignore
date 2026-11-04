@@ -1,6 +1,6 @@
-# Competition data, annotations, weights and outputs never enter this repository.
+# Competition data, annotations and outputs never enter this repository.
+# The weights of the judged model do (weights/, Git LFS): the host requires them here.
 data/
-weights/
 outputs/
 *.pt
 *.pth
@@ -19,3 +19,6 @@ __pycache__/
 .ipynb_checkpoints/
 __pycache__/
 .cx/
+!weights/detector.pt
+!weights/refiner.pt
+!weights/manifest.json
