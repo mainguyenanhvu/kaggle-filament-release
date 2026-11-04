@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 from pycocotools import mask as mask_util
 
-from filseg.metrics import bootstrap, evaluate
+from filseg.metrics import bootstrap, evaluate, human_baseline
 
 
 def rle(y0, y1, x0, x1, size=64):
@@ -85,6 +85,18 @@ class TestMetrics(unittest.TestCase):
         self.assertGreaterEqual(ci["pq"][1], pq)
         self.assertEqual(ci["sq"], [1.0, 1.0])
         self.assertEqual(bootstrap(records, preds, n_boot=500, seed=1), ci)
+
+    def test_human_baseline_uses_leave_one_out_references(self):
+        # two annotators who agree on a, one also drew b; the image with one record is skipped
+        a, b = rle(0, 10, 0, 10), rle(20, 30, 20, 30)
+        records = {"s": [[a], [a, b]], "single": [[a]]}
+        out = human_baseline(records, {"s": [a, b], "single": [a]})
+        self.assertEqual(out["n_images"], 1)
+        # record 1 predicts {a} vs {a, b}: tp 1 fn 1; record 2 predicts {a, b} vs {a}: tp 1 fp 1
+        self.assertEqual((out["human"]["tp"], out["human"]["fp"], out["human"]["fn"]), (2, 1, 1))
+        # the predictions {a, b} against {a, b} and against {a}: tp 3 fp 1
+        self.assertEqual((out["model"]["tp"], out["model"]["fp"], out["model"]["fn"]), (3, 1, 0))
+        self.assertAlmostEqual(out["model"]["pq"], round(3 / 3.5, 5))
 
 
 if __name__ == "__main__":

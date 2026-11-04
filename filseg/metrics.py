@@ -160,6 +160,73 @@ def evaluate(
     return ev
 
 
+def _counts(ev: Evaluation) -> np.ndarray:
+    return np.array([sum(ev.tp_iou), ev.tp, ev.fp, ev.fn], dtype=float)
+
+
+def _pq_sq_rq(c: np.ndarray) -> dict:
+    denom = c[1] + 0.5 * c[2] + 0.5 * c[3]
+    return {
+        "pq": round(float(c[0] / denom), 5) if denom else 0.0,
+        "sq": round(float(c[0] / c[1]), 4) if c[1] else 0.0,
+        "rq": round(float(c[1] / denom), 4) if denom else 0.0,
+        "tp": int(c[1]),
+        "fp": int(c[2]),
+        "fn": int(c[3]),
+    }
+
+
+def human_baseline(
+    records: dict[str, list[list[dict]]],
+    preds: dict[str, list[dict]],
+    n_boot: int = 0,
+    seed: int = 0,
+) -> dict:
+    """A single annotator scored as a predictor, beside the predictions, on the same references.
+
+    On every image with at least two non-empty annotator records, each record in turn is the
+    predictor and the remaining records are the references, pooled as in `evaluate`; the
+    predictions are scored against exactly the same reference sets. With n_boot > 0 the
+    images are resampled with replacement for a 95% interval of PQ(model) - PQ(human)."""
+    stems, per = [], []
+    for stem, recs in sorted(records.items()):
+        drawn = [r for r in recs if r]
+        if len(drawn) < 2:
+            continue
+        human, model = Evaluation(), Evaluation()
+        for i, pred in enumerate(drawn):
+            for j, gt in enumerate(drawn):
+                if j != i:
+                    score_record(human, gt, pred)
+                    score_record(model, gt, preds.get(stem, []))
+        stems.append(stem)
+        per.append((_counts(human), _counts(model)))
+    if not per:
+        return {"n_images": 0}
+    h = np.array([p[0] for p in per])
+    m = np.array([p[1] for p in per])
+    out = {
+        "n_images": len(stems),
+        "human": _pq_sq_rq(h.sum(0)),
+        "model": _pq_sq_rq(m.sum(0)),
+    }
+    if n_boot:
+        rng = np.random.default_rng(seed)
+        idx = rng.integers(0, len(stems), size=(n_boot, len(stems)))
+        sh, sm = h[idx].sum(1), m[idx].sum(1)
+
+        def pq(s):
+            denom = s[:, 1] + 0.5 * s[:, 2] + 0.5 * s[:, 3]
+            return np.where(denom > 0, s[:, 0] / np.maximum(denom, 1e-12), 0.0)
+
+        d = pq(sm) - pq(sh)
+        lo, hi = np.percentile(d, [2.5, 97.5])
+        out["model_minus_human_pq_95"] = [round(float(lo), 4), round(float(hi), 4)]
+        out["p_model_better"] = round(float((d > 0).mean()), 4)
+        out["n_boot"], out["seed"] = n_boot, seed
+    return out
+
+
 def bootstrap(
     records: dict[str, list[list[dict]]],
     preds: dict[str, list[dict]],

@@ -7,7 +7,7 @@ with --bootstrap, 95% intervals over images; with --plots it also draws the thre
 organisers' self-evaluation notebook.
 
   python scripts/rubric_metrics.py --ann <train annotations.json> --pred <submission.csv|preds.jsonl> \
-      [--heldout] [--bootstrap 5000] [--out metrics.json] [--plots figures/]
+      [--heldout] [--bootstrap 5000] [--human-baseline] [--out metrics.json] [--plots figures/]
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from filseg.io import heldout_stems, load_predictions, load_records  # noqa: E402
-from filseg.metrics import Evaluation, bootstrap, evaluate  # noqa: E402
+from filseg.metrics import Evaluation, bootstrap, evaluate, human_baseline  # noqa: E402
 
 
 def plot(ev: Evaluation, out_dir: Path) -> None:
@@ -97,6 +97,12 @@ def main() -> int:
         metavar="N",
         help="N image-level bootstrap resamples for 95%% intervals (0 = off)",
     )
+    ap.add_argument(
+        "--human-baseline",
+        action="store_true",
+        help="also score each annotator as a predictor against the other annotators "
+        "(images with >= 2 non-empty records), beside the predictions on the same references",
+    )
     ap.add_argument("--out", type=Path, help="write the summary as JSON")
     ap.add_argument("--plots", type=Path, help="directory for the distribution figures")
     a = ap.parse_args()
@@ -122,6 +128,8 @@ def main() -> int:
     summary["by_records_per_image"] = by_n
     if a.bootstrap:
         summary["bootstrap_95"] = bootstrap(records, preds, n_boot=a.bootstrap)
+    if a.human_baseline:
+        summary["human_baseline"] = human_baseline(records, preds, n_boot=a.bootstrap)
     print(json.dumps(summary, indent=1))
     if a.out:
         a.out.write_text(json.dumps(summary, indent=1) + "\n")
