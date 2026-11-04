@@ -1,7 +1,8 @@
 # Python 3.12. Every component is under a permissive OSI licence (BSD / Apache-2.0 / MIT / PSF / HPND).
 torch==2.13.0            # BSD-3-Clause
 torchvision==0.28.0      # BSD-3-Clause (Mask R-CNN ResNet-50-FPN v2, ResNet-18 encoder)
-timm==1.0.30             # Apache-2.0 (ConvNeXt backbone of the cascade detector)
+timm==1.0.30             # Apache-2.0 (ConvNeXt backbones)
+transformers==5.17.0     # Apache-2.0 (Mask2Former voter)
 numpy==2.5.2             # BSD-3-Clause
 pycocotools==2.0.11      # BSD-2-Clause
 opencv-python-headless==5.0.0.93  # Apache-2.0
