@@ -4,9 +4,12 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
+import torch
+from PIL import Image
 from pycocotools import mask as mask_util
 
 from filseg import ensemble, mask2former
@@ -92,6 +95,48 @@ class TestVoteImage(unittest.TestCase):
                 "cpu",
             )
         self.assertEqual(q.call_args.args[0], "m2f-net")
+
+
+class FakeMask2Former:
+    """Three queries on an 8 x 8 logit grid: a good one, one with a low class score, one too small."""
+
+    def __call__(self, pixel_values):
+        h = pixel_values.shape[-1] // 4
+        masks = torch.full((1, 3, h, h), -10.0)
+        masks[0, 0, 2:6, 2:6] = 10.0
+        masks[0, 1, 2:6, 2:6] = 10.0
+        masks[0, 2, 0, 0] = 10.0
+        classes = torch.tensor([[[6.0, 0.0], [-6.0, 0.0], [6.0, 0.0]]])
+        return SimpleNamespace(class_queries_logits=classes, masks_queries_logits=masks)
+
+
+class TestQueryMasks(unittest.TestCase):
+    def test_floor_area_and_score(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "x.png"
+            Image.fromarray(np.full((64, 64, 3), 100, np.uint8)).save(path)
+            found = mask2former.query_masks(FakeMask2Former(), path, torch.device("cpu"))
+        self.assertEqual(len(found), 1)  # the low class score and the small mask are gone
+        score, rle_mask = found[0]
+        self.assertGreater(score, 0.9)
+        self.assertGreater(int(mask_util.area(rle_mask)), 250)
+
+
+class TestVoteAll(unittest.TestCase):
+    def test_loads_each_network_once_and_yields_per_image(self):
+        with tempfile.TemporaryDirectory() as d:
+            manifest = Path(d) / "vote.json"
+            manifest.write_text(json.dumps(MANIFEST))
+            paths = [Path(d) / "a.jpeg", Path(d) / "b.jpeg"]
+            with (
+                mock.patch.object(ensemble, "load_refiner", return_value="refiner"),
+                mock.patch.object(ensemble, "load_member", return_value="net") as load,
+                mock.patch.object(ensemble, "vote_image", return_value=[rle(10, 40, 10, 50)]) as vote,
+            ):
+                out = list(ensemble.vote_all(paths, manifest, d, Config(), "cpu"))
+        self.assertEqual([stem for stem, _, _ in out], ["a", "b"])
+        self.assertEqual(load.call_count, 4)
+        self.assertEqual(vote.call_count, 2)
 
 
 class TestMask2FormerMembers(unittest.TestCase):

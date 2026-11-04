@@ -14,7 +14,7 @@ rotation, horizontal flip and on-disk photometric jitter. One record per frame, 
 `--records` picks the other training sets of the vote's members (`--records random` is the all-records
 member; `--records film` trains every record with a per-annotator FiLM on the RoI heads, the vote's
 base, whose batches hold one annotator each and fall back to the null annotator 20% of the time).
-`--backbone` trains a timm backbone under a fresh FPN with AdamW lr 1e-4 and weight decay 0.05.
+`--backbone` trains a timm backbone under a fresh FPN with AdamW (`--adamw-lr`) and weight decay 0.05.
 
 The run writes `epoch_NN.pt` (model, optimizer, scheduler, epoch) and keeps the last two; the
 submitted detector is the last epoch, `epoch_17.pt`. Re-running resumes from the latest checkpoint.
@@ -79,7 +79,8 @@ def parse_args() -> argparse.Namespace:
         help="the cascade detector of the record vote: ConvNeXt-tiny (DINOv3) backbone, three box "
         "stages, AdamW lr 1e-4 / weight decay 0.05 (--lr, --weight-decay and --momentum are SGD "
         "options and are ignored). Record recipe: --epochs 3 --micro-batch 1 --device cpu, "
-        "warm-started from a detector this script does not reproduce (see README)",
+        "warm-started from a noisy-student detector and trained on real and pseudo-labelled GONG frames, "
+        "which this script does not reproduce (see README)",
     )
     ap.add_argument(
         "--records",
@@ -91,9 +92,10 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--backbone",
         default="resnet50",
-        help="timm model name under a fresh FPN, trained with AdamW lr 1e-4 / weight decay 0.05 "
-        "(the vote's ConvNeXt-small member: convnext_small.in12k_ft_in1k)",
+        help="timm model name under a fresh FPN, trained with AdamW and weight decay 0.05 "
+        "(the vote's ConvNeXt-small member: convnext_small.in12k_ft_in1k --adamw-lr 5e-5)",
     )
+    ap.add_argument("--adamw-lr", type=float, default=1e-4, help="AdamW learning rate of timm backbones")
     ap.add_argument(
         "--micro-batch",
         type=int,
@@ -155,7 +157,7 @@ def main() -> None:
         ).to(device)
     params = [p for p in model.parameters() if p.requires_grad]
     if args.cascade or args.backbone != "resnet50":
-        optimizer = torch.optim.AdamW(params, lr=1e-4, weight_decay=0.05)
+        optimizer = torch.optim.AdamW(params, lr=args.adamw_lr, weight_decay=0.05)
     else:
         optimizer = torch.optim.SGD(
             params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay
