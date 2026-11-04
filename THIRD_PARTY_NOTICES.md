@@ -1,7 +1,8 @@
 # Third-party notices
 
 This repository's own code is released under the Apache License 2.0 (see `LICENSE`). It depends on
-the third-party software and pretrained weights listed below, none of which is redistributed here.
+the third-party software and pretrained weights listed below. None is redistributed here as published;
+our fine-tuned checkpoints in `weights/` derive from the two torchvision weights below.
 Licence statements were checked on 2026-10-04 against the installed package metadata and the URLs
 given.
 
@@ -35,7 +36,7 @@ The training datasets carry their own terms:
   research and educational purposes." (<https://image-net.org/download.php>)
 
 The fine-tuned checkpoints (`detector.pt`, `refiner.pt`) are derived from these weights and from
-the competition training data, and are distributed separately (see `README.md`). Users who intend
+the competition training data, and are stored in `weights/` (see `README.md`). Users who intend
 commercial use of those checkpoints should assess the dataset terms above; retraining from random
 initialisation (`pretrained=False`) removes the dependency on the pretrained weights but not on the
 competition data.

@@ -1,8 +1,9 @@
 # Solar filament instance segmentation (Filament Segmentation Challenge 2026)
 
 Instance segmentation of solar filaments in full-disk H-alpha images: a Mask R-CNN detector proposes
-filaments, and a seed-box crop U-Net refines each proposal's mask. This repository holds the code only;
-it contains no competition images, annotations or trained weights.
+filaments, and a seed-box crop U-Net refines each proposal's mask. This repository holds the code, the
+configuration and the weights of the model we submit for evaluation (`weights/`, submission v36); it
+contains no competition images or annotations.
 
 Training, inference and the rubric scorer are all here, so the submitted result can be rebuilt from the
 challenge data alone.
@@ -21,6 +22,7 @@ challenge data alone.
 | `filseg/metrics.py` | Panoptic Quality over every annotator record, IoU/Dice distributions, one-to-many and many-to-one counts |
 | `filseg/io.py` | readers for the organiser COCO annotations, the submission CSV and JSON-lines predictions; the 60-image validation split |
 | `scripts/rubric_metrics.py` | command-line scorer that prints every rubric quantity and draws the three distribution figures |
+| `weights/` | the two checkpoints of the evaluated model (Git LFS), with `SHA256SUMS` and `manifest.json` |
 | `tests/` | synthetic unit tests (no data, no weights, no network): `python -m unittest discover tests` |
 
 ## Data
@@ -57,11 +59,11 @@ numbers can be reproduced exactly (below).
 
 ## Inference
 
-The two checkpoints are published separately from the code, as a Kaggle dataset:
-[`mainguyenanhvu/filament-seg-2026-weights`](https://www.kaggle.com/datasets/mainguyenanhvu/filament-seg-2026-weights)
-(`kaggle datasets download -d mainguyenanhvu/filament-seg-2026-weights -p weights --unzip`), with
-`SHA256SUMS` and a `manifest.json` recording which training checkpoint each came from. Verify them
-with `sha256sum -c SHA256SUMS`:
+The two checkpoints are stored in this repository under `weights/` with Git LFS, and the notebook loads
+them from there. Clone with `git lfs install` done once, or run `git lfs pull` after cloning; a clone
+without LFS holds small pointer files, which the notebook reports. A GitHub "Download ZIP" may hold
+pointers too. Each file is listed in `weights/SHA256SUMS` and `weights/manifest.json` records which
+training checkpoint it came from. Verify them with `cd weights && sha256sum -c SHA256SUMS`:
 
 | file | sha256 | bytes | parameters |
 |---|---|---|---|
@@ -81,6 +83,19 @@ python scripts/predict.py --images data/MAGFiLO_1.0_Kaggle_2026/test/test_images
 
 `python scripts/vote.py --base base.csv --voter allrec:R50=allrec.csv --voter ridge:R50=ridge.csv --voter dapt:R50=dapt.csv --voter m2f=m2f.csv --voter cnxs=cnxs.csv --out consensus.csv`
 Class-balanced consensus gives each linked class one vote and the base a separate vote (IoU > 0.4, pixel support >= 0.5).
+
+`notebooks/pipeline.ipynb` runs the evaluated model end to end. It reads the challenge data from `data/`
+(or `FILSEG_DATA=<dir holding test/ and train/>`). Without that folder it writes one synthetic full-disk
+image, so a fresh clone still exercises every inference step; the rubric section then reports that it was
+skipped. `FILSEG_LIMIT=N` keeps the first N images of each split for a quick check:
+
+```
+pip install -r requirements.txt
+jupyter execute notebooks/pipeline.ipynb
+```
+
+The class-balanced vote above is the development route to our best public score, not the evaluated model:
+its members are not all in this repository.
 
 ## Scoring
 
@@ -125,4 +140,5 @@ the recipe. On CPU the same command gives 0.4324.
 
 ## Licence
 
-Apache-2.0 (see `LICENSE`). Every dependency in `requirements.txt` is under a permissive OSI licence.
+Apache-2.0 (see `LICENSE`). Every dependency in `requirements.txt` is under a permissive OSI licence. The
+checkpoints in `weights/` derive from COCO and ImageNet pretraining; see `THIRD_PARTY_NOTICES.md`.
