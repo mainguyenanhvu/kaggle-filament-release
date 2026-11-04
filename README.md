@@ -79,6 +79,9 @@ python scripts/predict.py --images data/MAGFiLO_1.0_Kaggle_2026/test/test_images
 `--no-tta` drops the translate TTA (about three times faster). The pipeline also runs on CPU
 (`--device cpu`), at about 2.2 s per image without TTA on eight threads.
 
+`python scripts/vote.py --base base.csv --voter allrec:R50=allrec.csv --voter ridge:R50=ridge.csv --voter dapt:R50=dapt.csv --voter m2f=m2f.csv --voter cnxs=cnxs.csv --out consensus.csv`
+Class-balanced consensus gives each linked class one vote and the base a separate vote (IoU > 0.4, pixel support >= 0.5).
+
 ## Scoring
 
 ```

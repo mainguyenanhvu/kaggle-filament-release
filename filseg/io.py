@@ -72,3 +72,16 @@ def load_predictions(path: str | Path) -> dict[str, list[dict]]:
         r = json.loads(line)
         out[r["stem"]] = [_rle(m) for m in r["masks"]]
     return out
+
+
+def write_predictions_csv(path: str | Path, predictions: dict[str, list[dict]]) -> None:
+    """Write submission rows in stem and instance order, with ASCII COCO RLE counts."""
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["filament_id", "segmentation_rle"])
+        for stem, rles in predictions.items():
+            for n, r in enumerate(rles, start=1):
+                counts = r["counts"]
+                if isinstance(counts, bytes):
+                    counts = counts.decode("ascii")
+                writer.writerow([f"{stem}_{n}", counts])
