@@ -12,7 +12,7 @@ A manifest (`weights/vote.json`) names the base, its voters and the shared refin
 Every Mask R-CNN goes through the same path as `filseg.cascade`: translate TTA, mask NMS, ownership,
 refiner, then score >= 0.80, refiner probability >= 0.40 and area >= 250 px. `filseg.vote.cb_vote`
 then reshapes the base's objects; the vote adds and drops none. A Mask2Former voter reads its own
-queries (`filseg.mask2former`). The annotator row of the base is
+queries (`filseg.mask2former`). Fragments the vote leaves beside an object are dropped last. The annotator row of the base is
 fixed in the manifest, so inference reads nothing but the H-alpha image.
 """
 
@@ -28,7 +28,7 @@ from . import mask2former
 from .cascade import image_candidates, member_masks
 from .infer import Config
 from .model import load_detector, load_refiner
-from .vote import cb_vote
+from .vote import cb_vote, drop_satellites
 
 
 @dataclass
@@ -80,7 +80,7 @@ def vote_image(path: Path, base, voters, refiner, cfg: Config, device) -> list[d
 
     classes = {m.name: m.voter_class for m, _ in voters if m.voter_class}
     votes = {m.name: masks(m, net) for m, net in voters}
-    return cb_vote(masks(*base), votes, classes)
+    return drop_satellites(cb_vote(masks(*base), votes, classes))
 
 
 def vote_all(paths, manifest, weights, cfg: Config, device, log_every: int = 25):

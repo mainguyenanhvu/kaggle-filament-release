@@ -70,6 +70,7 @@ score at inference follows the mmdetection convention (Apache-2.0), reimplemente
 | timm | 1.0.30 | Apache-2.0 (package metadata) | ConvNeXt-tiny feature backbone of the cascade detector (`filseg/model.py`, `TimmFPN`) |
 | transformers | 5.17.0 | Apache-2.0 (package metadata) | Mask2Former voter (`filseg/mask2former.py`) |
 | numpy | 2.5.2 | BSD-3-Clause (bundled components: 0BSD, MIT, Zlib, CC0-1.0) | array processing |
+| scipy | 1.18.1 | BSD-3-Clause (package metadata; bundled components under BSD, MIT and others) | connected components in `filseg/vote.py` |
 | pycocotools | 2.0.11 | BSD-2-Clause (package metadata: FreeBSD) | RLE mask encoding and COCO annotation handling |
 | opencv-python-headless | 5.0.0.93 | OpenCV: Apache-2.0; wheel packaging: MIT; bundled FFmpeg binaries: LGPL-2.1 | image I/O, CLAHE, morphology |
 | pillow | 12.3.0 | MIT-CMU (HPND) | image I/O |

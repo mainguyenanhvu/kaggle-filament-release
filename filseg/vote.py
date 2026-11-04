@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import numpy as np
 from pycocotools import mask as mask_util
+from scipy import ndimage as ndi
 
 MA = 250
 LINK = 0.4
 VOTE = 0.5
+SATELLITE_SHARE = 0.10
+EIGHT_CONNECTED = np.ones((3, 3), bool)
 
 
 def iou_mat(a: list[dict], b: list[dict]) -> np.ndarray:
@@ -81,4 +84,23 @@ def cb_vote(
             continue
         owned |= nm
         out.append(mask_util.encode(np.asarray(nm, np.uint8, order="F")))
+    return out
+
+
+def drop_satellites(rles: list[dict]) -> list[dict]:
+    """Drop the fragments a pixel vote leaves beside an object: a component survives with at least
+    250 px and 10% of the object's largest component. A result under 250 px keeps the mask as it was."""
+    out = []
+    for rle in rles:
+        mask = mask_util.decode(rle).astype(bool)
+        labels, n = ndi.label(mask, EIGHT_CONNECTED)
+        if n >= 2:
+            areas = np.bincount(labels.ravel())
+            areas[0] = 0
+            keep = areas >= max(MA, SATELLITE_SHARE * areas.max())
+            keep[0] = False
+            kept = keep[labels]
+            if kept.sum() >= MA:
+                mask = kept
+        out.append(mask_util.encode(np.asarray(mask, dtype=np.uint8, order="F")))
     return out

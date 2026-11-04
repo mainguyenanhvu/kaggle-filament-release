@@ -3,13 +3,14 @@
 import os
 import subprocess
 import sys
+import unittest
 from pathlib import Path
 
 import numpy as np
 from pycocotools import mask as mask_util
 
 from filseg.io import load_predictions, write_predictions_csv
-from filseg.vote import cb_vote
+from filseg.vote import cb_vote, drop_satellites
 
 
 def rle(mask):
@@ -101,3 +102,41 @@ def test_cli_round_trip(tmp_path):
     assert list(result) == ["synthetic_frame"]
     assert len(result["synthetic_frame"]) == 1
     np.testing.assert_array_equal(mask_util.decode(result["synthetic_frame"][0]), base)
+
+
+class TestDropSatellites(unittest.TestCase):
+    def rle(self, *boxes):
+        m = np.zeros((200, 200), np.uint8)
+        for y0, y1, x0, x1 in boxes:
+            m[y0:y1, x0:x1] = 1
+        return mask_util.encode(np.asarray(m, order="F"))
+
+    def area(self, rle):
+        return int(mask_util.area(rle))
+
+    def test_small_fragment_goes_large_second_component_stays(self):
+        main = (10, 60, 10, 90)  # 4000 px
+        small = (100, 110, 100, 110)  # 100 px, under the 250 px floor
+        large = (120, 170, 100, 120)  # 1000 px, over both floors
+        out = drop_satellites([self.rle(main, small, large)])
+        self.assertEqual(self.area(out[0]), 5000)
+
+    def test_ten_percent_floor_scales_with_the_object(self):
+        main = (0, 100, 0, 100)  # 10000 px
+        side = (120, 140, 120, 140)  # 400 px: over 250 px, under 10%
+        self.assertEqual(self.area(drop_satellites([self.rle(main, side)])[0]), 10000)
+
+    def test_mask_with_no_surviving_component_is_left_alone(self):
+        fragments = self.rle((0, 10, 0, 10), (50, 60, 50, 60))
+        self.assertEqual(self.area(drop_satellites([fragments])[0]), 200)
+
+    def test_diagonal_contact_is_one_component(self):
+        joined = self.rle((0, 20, 0, 20), (20, 40, 20, 40))
+        self.assertEqual(self.area(drop_satellites([joined])[0]), 800)
+
+    def test_count_and_order_unchanged(self):
+        a, b = self.rle((0, 30, 0, 30)), self.rle((100, 140, 100, 140))
+        self.assertEqual([self.area(r) for r in drop_satellites([a, b])], [900, 1600])
+
+
+
