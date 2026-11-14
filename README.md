@@ -1,9 +1,11 @@
 # Solar filament instance segmentation (Filament Segmentation Challenge 2026)
 
 Instance segmentation of solar filaments in full-disk H-alpha images: a Mask R-CNN detector proposes
-filaments, and a seed-box crop U-Net refines each proposal's mask. This repository holds the code, the
-configuration and the weights of the model we submit for evaluation (`weights/`, submission v36); it
-contains no competition images or annotations.
+filaments, and a seed-box crop U-Net refines each proposal's mask. Our final selection, CPRVOTE_G (Kaggle submission
+58073218, public 0.41), redraws those masks by a class-balanced vote of five networks and then refines
+each mask once along its spine with a strip U-Net (the CPR pass). This repository holds the code, the
+configuration and the weights of both the final selection and the single-detector baseline v36
+(`weights/`); it contains no competition images or annotations.
 
 Training, inference and the rubric scorer are all here, so the submitted result can be rebuilt from the
 challenge data alone.
@@ -22,7 +24,10 @@ challenge data alone.
 | `filseg/metrics.py` | Panoptic Quality over every annotator record, IoU/Dice distributions, one-to-many and many-to-one counts |
 | `filseg/io.py` | readers for the organiser COCO annotations, the submission CSV and JSON-lines predictions; the 60-image validation split |
 | `scripts/rubric_metrics.py` | command-line scorer that prints every rubric quantity and draws the three distribution figures |
-| `weights/` | the two checkpoints of the evaluated model (Git LFS), with `SHA256SUMS` and `manifest.json` |
+| `filseg/ensemble.py`, `filseg/vote.py`, `filseg/mask2former.py`, `filseg/cascade.py` | the five-network class-balanced vote of the final selection (`weights/vote.json`) |
+| `scripts/predict_vote.py` | images -> the vote's submission CSV |
+| `filseg/cpr.py`, `scripts/refine_cpr.py` | the CPR strip refiner and its guarded pass over a submission CSV |
+| `weights/` | every checkpoint of the final selection and of v36 (Git LFS), with `SHA256SUMS` and `manifest.json` |
 | `tests/` | synthetic unit tests (no data, no weights, no network): `python -m unittest discover tests` |
 
 ## Data
@@ -59,8 +64,9 @@ numbers can be reproduced exactly (below).
 
 ## Inference
 
-The two checkpoints are stored in this repository under `weights/` with Git LFS, and the notebook loads
-them from there. Clone with `git lfs install` done once, or run `git lfs pull` after cloning; a clone
+The v36 checkpoints (`detector.pt`, `refiner.pt`) and the final selection's (`acond.pt`, `allrec.pt`,
+`m2f.pt` with `mask2former_config.json`, `cnxs.pt`, `cascade.pt`, `cpr.pt`, named by `vote.json`) are stored
+in this repository under `weights/` with Git LFS, and the notebook loads them from there. Clone with `git lfs install` done once, or run `git lfs pull` after cloning; a clone
 without LFS holds small pointer files, which the notebook reports. A GitHub "Download ZIP" may hold
 pointers too. Each file is listed in `weights/SHA256SUMS` and `weights/manifest.json` records which
 training checkpoint it came from. Verify them with `cd weights && sha256sum -c SHA256SUMS`:
@@ -81,10 +87,10 @@ python scripts/predict.py --images data/MAGFiLO_1.0_Kaggle_2026/test/test_images
 `--no-tta` drops the translate TTA (about three times faster). The pipeline also runs on CPU
 (`--device cpu`), at about 2.2 s per image without TTA on eight threads.
 
-`python scripts/vote.py --base base.csv --voter allrec:R50=allrec.csv --voter ridge:R50=ridge.csv --voter dapt:R50=dapt.csv --voter m2f=m2f.csv --voter cnxs=cnxs.csv --out consensus.csv`
+Offline, the same vote can be run over member CSVs: `python scripts/vote.py --base base.csv --voter allrec:R50=allrec.csv --voter ridge:R50=ridge.csv --voter dapt:R50=dapt.csv --voter m2f=m2f.csv --voter cnxs=cnxs.csv --out consensus.csv`
 Class-balanced consensus gives each linked class one vote and the base a separate vote (IoU > 0.4, pixel support >= 0.5).
 
-`notebooks/pipeline.ipynb` runs the evaluated model end to end. It reads the challenge data from `data/`
+`notebooks/pipeline.ipynb` runs the v36 baseline end to end, and its last section the final selection. It reads the challenge data from `data/`
 (or `FILSEG_DATA=<dir holding test/ and train/>`). Without that folder it writes one synthetic full-disk
 image, so a fresh clone still exercises every inference step; the rubric section then reports that it was
 skipped. `FILSEG_LIMIT=N` keeps the first N images of each split for a quick check:
@@ -94,8 +100,30 @@ pip install -r requirements.txt
 jupyter execute notebooks/pipeline.ipynb
 ```
 
-The class-balanced vote above is the development route to our best public score, not the evaluated model:
-its members are not all in this repository.
+## Reproducing the final selection (CPRVOTE_G)
+
+The final selection is two commands over the test images. Both read only `weights/` and the images.
+
+```
+# 1. the five-network vote: base acond (annotator-conditioned Mask R-CNN) reshaped by allrec, m2f
+#    (Mask2Former Swin-S), cnxs (ConvNeXt-S Mask R-CNN) and cascade (ConvNeXt-T Cascade R-CNN)
+#    MD5 fbb497b223c0afc513f2911ba1a076f6, 1218 rows, 180 images
+python scripts/predict_vote.py --images data/MAGFiLO_1.0_Kaggle_2026/test/test_images \
+    --weights weights --out outputs/vote.csv
+
+# 2. the guarded CPR pass: MD5 3c92671d9463ce2466ef418ae0609fbd, 1218 rows (the submitted file)
+OMP_NUM_THREADS=1 python scripts/refine_cpr.py --images data/MAGFiLO_1.0_Kaggle_2026/test/test_images \
+    --csv outputs/vote.csv --weights weights/cpr.pt --out outputs/cprvote_G.csv
+```
+
+On one RTX PRO 6000 the vote took 8261 s for the 180 test images (45.9 s per image, `<out>.timing.json`)
+and the CPR pass 1395 s. The GPU vote path gave md5-identical files in repeated runs. The CPR pass works
+mask by mask: each mask is straightened along its spine into a 65-row strip, `StripNet` predicts a
+residual on the mask's own logit (mean over four flips), the strip is mapped back, overlaps go to the
+higher probability, and a mask is replaced only when the refined mask keeps IoU >= 0.7 with the original;
+otherwise it keeps its pixels minus those a replaced neighbour took. `cpr.pt` was trained from random
+initialisation on strips cut from the challenge training annotations (the 60 held-out observations
+excluded); its training script is not part of this release.
 
 ## Scoring
 
@@ -113,7 +141,7 @@ Beyond PQ, SQ, RQ and TP/FP/FN it reports the IoU and Dice quantiles of overlapp
 the one-to-many and many-to-one counts at IoU > 0 and at the match threshold IoU > 0.5, PQ by the number of
 annotator records per image, and (`--bootstrap N`) 95% intervals from resampling images with all their records.
 
-## Reproducing the reported numbers
+## Reproducing the reported numbers (v36 baseline)
 
 The two commands below rebuild the submitted test file and the held-out table of the report.
 
@@ -142,3 +170,5 @@ the recipe. On CPU the same command gives 0.4324.
 
 Apache-2.0 (see `LICENSE`). Every dependency in `requirements.txt` is under a permissive OSI licence. The
 checkpoints in `weights/` derive from COCO and ImageNet pretraining; see `THIRD_PARTY_NOTICES.md`.
+Two checkpoints carry their pretraining's terms instead: `cascade.pt` the DINOv3 License (`LICENSE-DINOv3.md`)
+and `m2f.pt` CC BY-NC 4.0 (non-commercial use only).

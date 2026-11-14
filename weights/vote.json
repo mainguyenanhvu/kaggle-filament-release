@@ -1,0 +1,33 @@
+{
+ "refiner": "refiner.pt",
+ "base": {
+  "name": "acond",
+  "file": "acond.pt",
+  "film_ids": 37,
+  "annotator": 28
+ },
+ "voters": [
+  {
+   "name": "allrec",
+   "file": "allrec.pt",
+   "class": "r50"
+  },
+  {
+   "name": "m2f",
+   "file": "m2f.pt",
+   "kind": "mask2former",
+   "config": "mask2former_config.json"
+  },
+  {
+   "name": "cnxs",
+   "file": "cnxs.pt",
+   "backbone": "convnext_small.in12k_ft_in1k"
+  },
+  {
+   "name": "cascade",
+   "file": "cascade.pt",
+   "backbone": "convnext_tiny.dinov3_lvd1689m",
+   "cascade": true
+  }
+ ]
+}

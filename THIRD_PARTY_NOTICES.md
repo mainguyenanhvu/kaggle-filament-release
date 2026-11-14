@@ -38,6 +38,20 @@ your winning solution, you do not need to grant an open source license in the pr
 that data and/or model(s)." The same sentence covers the Mask2Former pretraining, whose licence field
 names no terms.
 
+The Mask2Former voter's checkpoint `m2f.pt` is fine-tuned from `facebook/mask2former-swin-small-coco-instance`.
+The Hugging Face model card names no terms, but the upstream model zoo it was first released from states:
+"All models available for download through this document are licensed under the Creative Commons
+Attribution-NonCommercial 4.0 International License."
+(<https://github.com/facebookresearch/Mask2Former/blob/main/MODEL_ZOO.md>, read 2026-11-14;
+<https://creativecommons.org/licenses/by-nc/4.0/>). We therefore distribute `m2f.pt` as Adapted Material under
+CC BY-NC 4.0, for non-commercial use only, not under this repository's Apache-2.0. Attribution: Mask2Former,
+Bowen Cheng et al., Meta AI (<https://github.com/facebookresearch/Mask2Former>); changes: fine-tuned on the
+challenge training annotations with a single filament class (`scripts/train_mask2former.py`). The Winner
+License sentence quoted above covers this model too.
+
+The CPR strip refiner `cpr.pt` (`filseg/cpr.py`) is trained from random initialisation, with no pretrained
+weights.
+
 The training datasets carry their own terms:
 
 - **COCO.** "The annotations in this dataset along with this website belong to the COCO Consortium

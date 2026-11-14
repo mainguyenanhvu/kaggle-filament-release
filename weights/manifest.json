@@ -19,5 +19,52 @@
   "sha256": "4dccebbd7de0f41e5e3cb3d00dd4c7fd0960c326c14a0f44fa43adf349d98e8f",
   "source_sha256": "cd467a5a5a1e7c91382fee82196258d11b5dbc345435c31da20afb00c9a177bd",
   "parameters": 14248157
+ },
+ "acond.pt": {
+  "source_sha256": "2532fe6f78aafaec0f1aab5461c509d37bd607b32c696343f890bdd4e0caee14",
+  "epoch": 17,
+  "bytes": 184280419,
+  "sha256": "c343d98002b5ed553c89c0b47d028f82cf996d160f2c5054bd5fff62ba620cc0",
+  "parameters": 46039003,
+  "source_checkpoint": "maskrcnn_v2_acond/epoch_17.pt"
+ },
+ "allrec.pt": {
+  "source_sha256": "02906a1ca7780024b8033bd9d993e4ca747afd4831a38d1e812810b4d3f8b613",
+  "epoch": 17,
+  "bytes": 183907689,
+  "sha256": "d73466bf601dcdf7ae2389301b4f91ba5ca8bcdb82d0ab791def03d25622e2ce",
+  "parameters": 45941723,
+  "source_checkpoint": "maskrcnn_v2_allrec/epoch_17.pt"
+ },
+ "cnxs.pt": {
+  "source_sha256": "7c1fff9f2fa46f84aed023178b8d24b28fda6dcf449c330f94ed759246eb0655",
+  "epoch": 17,
+  "bytes": 285027151,
+  "sha256": "49db469ebaf701de37c456360c031af71b9d33f03d529167d1847d1f09023271",
+  "parameters": 71219323,
+  "source_checkpoint": "maskrcnn_v2_cnxs/epoch_17.pt"
+ },
+ "cascade.pt": {
+  "source_sha256": "1a18a5514a3c85c487114ccac35eb8d570646d1ae9f12cedae9dc64b672e08d6",
+  "epoch": 2,
+  "bytes": 320230271,
+  "sha256": "94834d42226dce3219a1b7837e29b15213ac2d6526550ecec0e45a32223848a7",
+  "parameters": 80024207,
+  "source_checkpoint": "maskrcnn_v2_cascadecpu/epoch_02.pt"
+ },
+ "m2f.pt": {
+  "source_sha256": "923535d529acf87fcfb21b4556b86c98f91a9486647b8e1db2c4343ff53e0015",
+  "epoch": 39,
+  "bytes": 275158359,
+  "sha256": "5d641262ef175cbb3565299a3cc7b5cead0454b5f24331c78988fe51c467358c",
+  "parameters": 68720782,
+  "source_checkpoint": "m2f_swins/final.pt"
+ },
+ "cpr.pt": {
+  "source_checkpoint": "cpr1105/cpr.pt",
+  "bytes": 20579155,
+  "sha256": "6524aba7a0499baeb9f28673c7eece1b6a83f2cc05202530b41a7ca31de2b07a",
+  "parameters": 5139745,
+  "trained_from": "random initialisation (StripNet, zero-initialised output)"
  }
 }

@@ -22,3 +22,11 @@ __pycache__/
 !weights/detector.pt
 !weights/refiner.pt
 !weights/manifest.json
+!weights/acond.pt
+!weights/allrec.pt
+!weights/cnxs.pt
+!weights/cascade.pt
+!weights/m2f.pt
+!weights/cpr.pt
+!weights/vote.json
+!weights/mask2former_config.json
